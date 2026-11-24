@@ -3,12 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block titre %}Sondage de la classe de VOS NOMS{% endblock %}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <title>{% block titre %}Sondage de la classe{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v=2">
 </head>
 <body>
+  <div class="splash" id="welcome-splash" hidden aria-label="Bienvenue">
+    <div class="splash-inner" aria-hidden="true">
+      <div class="splash-kicker">Sondage de la classe</div>
+      <span class="falling-balloon">🎈</span>
+      <span class="falling-poll">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M5 20V4h14v16"></path>
+          <path d="M8 16v-3m4 3V8m4 8v-5"></path>
+          <path d="M3 20h18"></path>
+        </svg>
+      </span>
+      <div class="splash-name">ARIANNE</div>
+    </div>
+    <button class="splash-skip" id="skip-splash" type="button">Passer l’intro</button>
+  </div>
   <header>
-    <h1>Sondage de la classe de VOS NOMS</h1>
+    <h1>✦ Sondage de la classe</h1>
     <nav>
       <a href="{{ url_for('accueil') }}">Formulaire</a>
       <a href="{{ url_for('resultats') }}">Résultats</a>
@@ -16,5 +31,25 @@
   </header>
   <main>{% block contenu %}{% endblock %}</main>
   <footer>Application pédagogique – déployée dans le cloud par les étudiants</footer>
+  <script>
+    (() => {
+      const splash = document.getElementById("welcome-splash");
+      const skip = document.getElementById("skip-splash");
+      const storageKey = "sondage-intro-v1";
+      if (!splash || sessionStorage.getItem(storageKey)) return;
+      splash.hidden = false;
+      const closeSplash = () => {
+        if (splash.hidden) return;
+        splash.classList.add("splash-leaving");
+        sessionStorage.setItem(storageKey, "seen");
+        window.setTimeout(() => { splash.hidden = true; }, 550);
+      };
+      const timer = window.setTimeout(closeSplash, 7450);
+      skip.addEventListener("click", () => {
+        window.clearTimeout(timer);
+        closeSplash();
+      });
+    })();
+  </script>
 </body>
 </html>

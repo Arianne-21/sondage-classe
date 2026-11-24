@@ -2,13 +2,14 @@
 
 - Sans variable DATABASE_URL  -> base SQLite locale (pour tester sur son PC)
 - Avec DATABASE_URL           -> base PostgreSQL distante (Neon) pour le cloud
+- Avant la première connexion à Neon, exécuter neon_setup.sql avec le rôle propriétaire.
 """
 import csv
 import hmac
 import io
 import os
 
-from flask import Flask, Response, abort, redirect, render_template, request, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, url_for
 
 app = Flask(__name__)
 
@@ -59,15 +60,17 @@ _pret = False
 
 
 def preparer_base():
-    """Crée la table au premier besoin (et pas à l'import : l'appli démarre
-    même si la base dort encore)."""
+    """Crée la table locale ou vérifie la table Neon au premier besoin."""
     global _pret
     if _pret:
         return
-    cle = "SERIAL PRIMARY KEY" if USE_PG else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    if USE_PG:
+        executer("SELECT 1 FROM public.reponses LIMIT 0")
+        _pret = True
+        return
     executer(
-        f"""CREATE TABLE IF NOT EXISTS reponses (
-                id {cle},
+        """CREATE TABLE IF NOT EXISTS reponses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 prenom TEXT NOT NULL,
                 filiere TEXT NOT NULL,
                 niveau TEXT NOT NULL,
@@ -136,20 +139,13 @@ def merci():
 
 @app.route("/resultats")
 def resultats():
-    preparer_base()
-    total = executer("SELECT COUNT(*) FROM reponses", lire=True)[0][0]
-    par_techno = executer(
-        "SELECT techno, COUNT(*) FROM reponses GROUP BY techno ORDER BY COUNT(*) DESC",
-        lire=True,
-    )
+    total, par_techno = statistiques_technos()
     derniers = executer(
         "SELECT prenom, techno, avis FROM reponses ORDER BY id DESC LIMIT 10",
         lire=True,
     )
-    plus_grand = max([n for _, n in par_techno], default=1)
     return render_template(
-        "resultats.html", total=total, par_techno=par_techno,
-        derniers=derniers, plus_grand=plus_grand,
+        "resultats.html", total=total, par_techno=par_techno, derniers=derniers,
     )
 
 
@@ -169,7 +165,6 @@ def export_csv():
     w = csv.writer(sortie)
     w.writerow(["id", "prenom", "filiere", "niveau", "techno", "avis", "cree_le"])
     for ligne in lignes:
-        # neutralise les "injections de formules" si on ouvre le CSV dans Excel
         w.writerow([("'" + str(c)) if str(c).startswith(("=", "+", "-", "@")) else c
                     for c in ligne])
     return Response(
@@ -191,6 +186,49 @@ def sante():
 
 def listes():
     return {"filieres": FILIERES, "niveaux": NIVEAUX, "technos": TECHNOS}
+
+
+def classement_champ(colonne, choix, total):
+    lignes = executer(
+        f"SELECT {colonne}, COUNT(*) FROM reponses GROUP BY {colonne}",
+        lire=True,
+    )
+    comptes = dict(lignes)
+    classement = sorted(
+        ((option, comptes.get(option, 0)) for option in choix),
+        key=lambda item: (-item[1], item[0]),
+    )
+    return total, [
+        (option, nombre, round(nombre * 100 / total, 1) if total else 0)
+        for option, nombre in classement
+    ]
+
+
+def statistiques_technos():
+    preparer_base()
+    total = executer("SELECT COUNT(*) FROM reponses", lire=True)[0][0]
+    return classement_champ("techno", TECHNOS, total)
+
+
+@app.route("/api/statistiques")
+def api_statistiques():
+    preparer_base()
+    total = executer("SELECT COUNT(*) FROM reponses", lire=True)[0][0]
+    choix_par_champ = {
+        "filieres": ("filiere", FILIERES),
+        "niveaux": ("niveau", NIVEAUX),
+        "technos": ("techno", TECHNOS),
+    }
+    return jsonify(
+        total=total,
+        classements={
+            nom: [
+                {"nom": option, "nombre": nombre, "pourcentage": pourcentage}
+                for option, nombre, pourcentage in classement_champ(colonne, choix, total)[1]
+            ]
+            for nom, (colonne, choix) in choix_par_champ.items()
+        },
+    )
 
 
 if __name__ == "__main__":                         # lancement local : python app.py

@@ -1,47 +1,191 @@
 {% extends "base.html" %}
 {% block contenu %}
-<h2>Donnez votre avis</h2>
+<h2>Votre voix, votre univers.</h2>
+<p class="intro-copy">Quelques choix suffisent pour partager votre profil et faire vivre le sondage de la classe.</p>
 {% if erreurs %}
 <div class="erreurs" role="alert">
   <ul>{% for e in erreurs %}<li>{{ e }}</li>{% endfor %}</ul>
 </div>
 {% endif %}
-<form method="post" action="{{ url_for('accueil') }}">
-  <label for="prenom">Prénom</label>
-  <input id="prenom" name="prenom" maxlength="50" required value="{{ d.get('prenom', '') }}">
+<div class="form-layout">
+  <form class="form-card" method="post" action="{{ url_for('accueil') }}">
+    <div class="field-grid">
+      <div class="field-card">
+        <label for="prenom">Votre prénom</label>
+        <p class="field-hint">Comment vous appeler ?</p>
+        <input id="prenom" name="prenom" maxlength="50" required value="{{ d.get('prenom', '') }}" placeholder="Ex. Alex" autocomplete="given-name">
+      </div>
 
-  <label for="filiere">Filière</label>
-  <select id="filiere" name="filiere" required>
-    <option value="">-- choisir --</option>
-    {% for f in listes.filieres %}
-    <option value="{{ f }}" {{ 'selected' if d.get('filiere') == f }}>{{ f }}</option>
-    {% endfor %}
-  </select>
+      <div class="field-card">
+        <label for="filiere">Votre filière</label>
+        <p class="field-hint">Choisissez votre domaine d’études.</p>
+        <select id="filiere" name="filiere" required>
+          <option value="">Sélectionner une filière</option>
+          {% for f in listes.filieres %}
+          <option value="{{ f }}" {{ 'selected' if d.get('filiere') == f }}>{{ f }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <label for="niveau">Votre niveau en programmation</label>
-  <select id="niveau" name="niveau" required>
-    <option value="">-- choisir --</option>
-    {% for n in listes.niveaux %}
-    <option value="{{ n }}" {{ 'selected' if d.get('niveau') == n }}>{{ n }}</option>
-    {% endfor %}
-  </select>
+      <div class="field-card">
+        <label for="niveau">Votre niveau</label>
+        <p class="field-hint">Où en êtes-vous en programmation ?</p>
+        <select id="niveau" name="niveau" required>
+          <option value="">Sélectionner votre niveau</option>
+          {% for n in listes.niveaux %}
+          <option value="{{ n }}" {{ 'selected' if d.get('niveau') == n }}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
 
-  <fieldset>
-    <legend>Technologie préférée</legend>
-    {% for t in listes.technos %}
-    <label class="inline"><input type="radio" name="techno" value="{{ t }}" required
-      {{ 'checked' if d.get('techno') == t }}> {{ t }}</label>
-    {% endfor %}
-  </fieldset>
+      <fieldset class="field-card technology-field">
+        <legend>Votre technologie préférée</legend>
+        <p class="field-hint">Choisissez une seule option.</p>
+        <div class="technology-options">
+          {% for t in listes.technos %}
+          <label class="choice-card">
+            <input type="radio" name="techno" value="{{ t }}" required
+              {{ 'checked' if d.get('techno') == t }}>
+            <span>{{ t }}</span>
+          </label>
+          {% endfor %}
+        </div>
+      </fieldset>
 
-  <label for="avis">Un commentaire (facultatif, 300 caractères)</label>
-  <textarea id="avis" name="avis" rows="3" maxlength="300">{{ d.get('avis', '') }}</textarea>
+      <div class="field-card full-width">
+        <label for="avis">Un petit mot <span class="optional">(facultatif)</span></label>
+        <p class="field-hint">Partagez votre avis en 300 caractères maximum.</p>
+        <textarea id="avis" name="avis" rows="3" maxlength="300" placeholder="Votre commentaire…">{{ d.get('avis', '') }}</textarea>
+      </div>
+    </div>
 
-  <!-- Champ-piège : invisible pour les humains, rempli par les robots -->
-  <div class="piege" aria-hidden="true">
-    <label>Ne pas remplir <input name="site_web" tabindex="-1" autocomplete="off"></label>
-  </div>
+    <div class="piege" aria-hidden="true">
+      <label>Ne pas remplir <input name="site_web" tabindex="-1" autocomplete="off"></label>
+    </div>
+    <button type="submit">Envoyer ma réponse <span aria-hidden="true">↗</span></button>
+  </form>
 
-  <button type="submit">Envoyer</button>
-</form>
+  <aside class="profile-card ranking-card" aria-label="Classement des technologies">
+    <div class="profile-orbit" aria-hidden="true">✦</div>
+    <h3>Classement en direct</h3>
+    <p>Les choix de la classe, actualisés automatiquement.</p>
+    <p class="ranking-total" id="ranking-total" aria-live="polite">Chargement des réponses…</p>
+    <details class="ranking-group" open>
+      <summary>Technologies préférées</summary>
+      <ol class="ranking-list" id="technology-ranking" aria-live="polite">
+        <li class="ranking-loading">Récupération du classement…</li>
+      </ol>
+    </details>
+    <details class="ranking-group">
+      <summary>Filières</summary>
+      <ol class="ranking-list" id="filiere-ranking" aria-live="polite"></ol>
+    </details>
+    <details class="ranking-group">
+      <summary>Niveaux en programmation</summary>
+      <ol class="ranking-list" id="niveau-ranking" aria-live="polite"></ol>
+    </details>
+    <p class="ranking-updated" id="ranking-updated"></p>
+    <div class="profile-item">
+      <span class="profile-label">Votre choix</span>
+      <span class="profile-value" id="choice-preview">À découvrir…</span>
+    </div>
+  </aside>
+</div>
+<script>
+  (() => {
+    const preview = document.getElementById("choice-preview");
+    const ranking = document.getElementById("technology-ranking");
+    const rankings = {
+      filieres: document.getElementById("filiere-ranking"),
+      niveaux: document.getElementById("niveau-ranking"),
+      technos: ranking
+    };
+    const total = document.getElementById("ranking-total");
+    const updated = document.getElementById("ranking-updated");
+    const fields = ["filiere", "niveau"];
+    const updatePreview = () => {
+      const values = fields.map((id) => document.getElementById(id).value).filter(Boolean);
+      const technology = document.querySelector('input[name="techno"]:checked');
+      if (technology) values.push(technology.value);
+      preview.textContent = values.length ? values.join(" · ") : "À découvrir…";
+    };
+    fields.forEach((id) => document.getElementById(id).addEventListener("change", updatePreview));
+    document.querySelectorAll('input[name="techno"]').forEach((input) => input.addEventListener("change", updatePreview));
+    updatePreview();
+
+    const renderRanking = (target, choices) => {
+      target.querySelectorAll(".ranking-loading").forEach((placeholder) => placeholder.remove());
+      const existing = new Map(
+        Array.from(target.querySelectorAll(".ranking-entry"), (row) => [row.dataset.choice, row])
+      );
+      choices.forEach((item, index) => {
+        let row = existing.get(item.nom);
+        const isNew = !row;
+        if (isNew) {
+          row = document.createElement("li");
+          row.className = "ranking-entry";
+          row.dataset.choice = item.nom;
+
+          const heading = document.createElement("div");
+          heading.className = "ranking-heading";
+          const name = document.createElement("span");
+          name.className = "ranking-name";
+          const value = document.createElement("span");
+          value.className = "ranking-value";
+          heading.append(name, value);
+
+          const track = document.createElement("div");
+          track.className = "ranking-track";
+          track.setAttribute("role", "progressbar");
+          track.setAttribute("aria-label", `Part des réponses pour ${item.nom}`);
+          track.setAttribute("aria-valuemin", "0");
+          track.setAttribute("aria-valuemax", "100");
+          const fill = document.createElement("span");
+          fill.className = "ranking-fill";
+          track.append(fill);
+
+          const count = document.createElement("span");
+          count.className = "ranking-count";
+          row.append(heading, track, count);
+        }
+
+        const percentage = Number(item.pourcentage);
+        row.querySelector(".ranking-name").textContent = `${index + 1}. ${item.nom}`;
+        row.querySelector(".ranking-value").textContent =
+          `${percentage.toLocaleString("fr-FR", { maximumFractionDigits: 1 })}%`;
+        const track = row.querySelector(".ranking-track");
+        track.setAttribute("aria-valuenow", String(percentage));
+        row.querySelector(".ranking-count").textContent =
+          `${item.nombre} réponse${item.nombre > 1 ? "s" : ""}`;
+        target.append(row);
+        const fill = row.querySelector(".ranking-fill");
+        const width = `${Math.max(0, Math.min(100, percentage))}%`;
+        if (isNew) {
+          window.requestAnimationFrame(() => { fill.style.width = width; });
+        } else {
+          fill.style.width = width;
+        }
+      });
+    };
+
+    const refreshRanking = async () => {
+      try {
+        const response = await fetch("{{ url_for('api_statistiques') }}", { cache: "no-store" });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const stats = await response.json();
+        Object.entries(stats.classements).forEach(([key, choices]) => {
+          renderRanking(rankings[key], choices);
+        });
+        total.textContent = `${stats.total} réponse${stats.total > 1 ? "s" : ""} enregistrée${stats.total > 1 ? "s" : ""}`;
+        updated.textContent = `Mis à jour à ${new Date().toLocaleTimeString("fr-FR")}`;
+      } catch (error) {
+        total.textContent = "Classement indisponible pour le moment.";
+        console.error("Impossible de charger le classement du sondage.", error);
+      } finally {
+        window.setTimeout(refreshRanking, 8000);
+      }
+    };
+    refreshRanking();
+  })();
+</script>
 {% endblock %}
